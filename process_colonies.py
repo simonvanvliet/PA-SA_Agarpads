@@ -155,11 +155,11 @@ def track_colonies(df, direction='forward'):
     #set col_idx for frame 0
     frm0 = df['frame']==0
     col_idx0 = np.arange(frm0.sum())
-    df.loc[frm0, 'col_idx'] = col_idx0
+    df.loc[frm0, 'colony_id'] = col_idx0
 
     #forward tracking
     for frm in range(1, df['frame'].max()+1):
-        col_idx_prev = df[df['frame']==frm-1]['col_idx'].values
+        col_idx_prev = df[df['frame']==frm-1]['colony_id'].values
 
         #calc distance between centroids
         x0 = df[df['frame']==frm-1]['centroid-0'].values
@@ -197,7 +197,7 @@ def track_colonies(df, direction='forward'):
             col_idx_new = col_idx_prev[idx]
         
         #assign new col_idx
-        df.loc[df['frame']==frm, 'col_idx'] = col_idx_new
+        df.loc[df['frame']==frm, 'colony_id'] = col_idx_new
         
     return df
 
@@ -332,7 +332,7 @@ def add_edge2edge_distance(df,PA_labels,SA1_labels,SA2_labels):
         for i in df.index[(df['frame']==frm)]: #loop through colonies in frame
             if df.loc[i, 'strain'] == 'PA': #skip Pseudomonas aeruginosa
                 continue
-            if df.loc[i, 'col_idx'] == -1: #skip untracked colonies
+            if df.loc[i, 'colony_id'] == -1: #skip untracked colonies
                 continue
             
             #get pixels of target colony
