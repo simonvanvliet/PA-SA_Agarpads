@@ -86,13 +86,13 @@ def register_pos(pos):
     return (register_pos_apply(pos, transform), transform)
 
 
-def register_movie(raw_data, outpath, outname, save_images=True, save_metdata=True, max_frames=None):
+def register_movie(raw_data, outpath, filename, save_images=True, save_metdata=True, max_frames=None):
     '''Register a movie and save the registered movie and the translation metadata
     
         Parameters
         raw_data: dask array of shape (frames, positions, channels, height, width)
         outpath: path to save the registered movie and metadata
-        outname: name of the registered movie and metadata
+        filename: name of the registered movie and metadata
         save_images: boolean to save the registered movie to disk
         save_metdata: boolean to save the translation metadata to disk
         max_frames: numpy array of shape (positions,) with the maximum number of frames to register
@@ -119,7 +119,7 @@ def register_movie(raw_data, outpath, outname, save_images=True, save_metdata=Tr
         reg_data[:max_idx,p,:,:,:] = reg_pos 
         
         if save_images:
-            outname = outpath / (outname + ('_reg_p%03i.h5' % p))   
+            outname = outpath / (filename + ('_reg_p%03i.h5' % p))   
             reg_pos.to_hdf5(outname, '/images')
 
     # translation metadata
@@ -127,7 +127,7 @@ def register_movie(raw_data, outpath, outname, save_images=True, save_metdata=Tr
         translation_df = pd.DataFrame(data = translation.reshape((-1,4)), columns = ['frame', 'pos', 'dy', 'dx'])
         translation_df['frame'] = pd.to_numeric(translation_df['frame'], downcast='integer')
         translation_df['pos'] = pd.to_numeric(translation_df['pos'], downcast='integer')
-        outname = outpath / (outname + '_reg.csv') 
+        outname = outpath / (filename + '_reg.csv') 
         translation_df.to_csv(outname)   
     
     return (reg_data,translation)
