@@ -12,7 +12,7 @@ cache = Cache(2e9)  # Leverage two gigabytes of memory
 cache.register()    # Turn cache on globally
 
 
-def process_seg(seg_prob, sigma=1, threshold=0.5, closing_radius=5, min_cell_area=20, max_hole_area=100, channel_axis=1):
+def process_seg(seg_prob, sigma=1, threshold=0.5, closing_radius=5, min_cell_area=20, max_hole_area=100, channel_axis=1, output_intermediate=False):
     """convert probability map from Ilastik into semantic segmentation
 
     Parameters
@@ -49,18 +49,21 @@ def process_seg(seg_prob, sigma=1, threshold=0.5, closing_radius=5, min_cell_are
 
     # 3. close holes
     disk = np.expand_dims(morphology.disk(closing_radius), axis=0) # create structuring element
-    mask = damorph.binary_closing(mask, disk)
+    mask_cl = damorph.binary_closing(mask, disk)
 
     # 4. clean mask
-    mask = da.map_blocks(morphology.remove_small_holes, mask, max_hole_area) #remove small holes
-    mask = da.map_blocks(morphology.remove_small_objects, mask, min_cell_area) #remove small objects
+    mask_cl = da.map_blocks(morphology.remove_small_holes, mask_cl, max_hole_area) #remove small holes
+    mask_cl = da.map_blocks(morphology.remove_small_objects, mask_cl, min_cell_area) #remove small objects
 
     # 5. Convert semantic segmentation into instance segmentation
 
     #convert binary markers into label markers:
-    labels = da.map_blocks(label, mask)
-
-    return labels
+    labels = da.map_blocks(label, mask_cl)
+    
+    if output_intermediate:
+        return labels, mask, mask_cl
+    else:
+        return labels
 
 
 #function to process single frame  
