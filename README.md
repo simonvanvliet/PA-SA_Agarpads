@@ -8,8 +8,8 @@ Run the `6_plot_colony_growth` notebook
 
 ### 0. Data preparation
 
-- `0_create_metadata` notebook stores metadata for each experiment in csv pandas data frame, uses code in `registration.py`
-- `1_register_export_data` notebook trims movies, registers to compensate for pad movement and write registered movies to disk
+- `0_create_metadata` notebook stores metadata for each experiment in csv pandas data frame
+- `1_register_export_data` notebook trims movies, registers to compensate for pad movement and write registered movies to disk, uses code in `registration.py`
 
 ### 1. Segmentation in Ilastik
 
