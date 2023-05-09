@@ -40,24 +40,15 @@ def process_pos(pos, settings, store_2_disk = True, clean_disk = True):
     exp_name = settings['exp_name']
     
     #construct file names
-    file_name_im = f"{exp_name}_reg_p{pos_idx:03d}.h5"
     file_name_seg = f"{exp_name}_reg_p{pos_idx:03d}-images_Probabilities.h5"
-
-    #load registered images
-    reg_im_file = h5py.File(settings['path_reg_im']/file_name_im, 'r') #open 
-    chunk_size = (1, *reg_im_file['images'].shape[-3:])
-    reg_im = da.from_array(reg_im_file['images'], chunks=chunk_size)
 
     #load segmented images
     seg_im_file = h5py.File(settings['path_seg_im']/file_name_seg, 'r') #open 
-    chunk_size = (1, 1,*reg_im_file['images'].shape[-2:])
+    chunk_size = (1, 1,*seg_im_file['images'].shape[-2:])
     seg_prob = da.from_array(seg_im_file['exported_data'], chunks=chunk_size)
 
     #crop to max frame
     pdata = settings['pos_metadata']
-    max_frm = int(pdata.loc[f"pos{pos_idx:03d}","max_frame"]) if f"pos{pos_idx:03d}" in pdata.index else reg_im.shape[0]
-    reg_im = reg_im[:max_frm]       
-    seg_prob = seg_prob[:max_frm]       
     condition = pdata.loc[f"pos{pos_idx:03d}","condition"] if f"pos{pos_idx:03d}" in pdata.index else "NA"
     
     #convert to labels
