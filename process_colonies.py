@@ -13,14 +13,14 @@ from dask.cache import Cache
 cache = Cache(2e9)  # Leverage two gigabytes of memory
 cache.register()    # Turn cache on globally
 
-def process_pos(pos, settings, store_2_disk = True, clean_disk = True):
+def process_pos(pos_idx, settings, store_2_disk = True, clean_disk = True, max_frame_e2e = None, ignore_edge_e2e = 0):
     '''
     segment & track colonies and extract properties for a single position
     
     Parameters
     
-    pos: str
-        position file name
+    pos_idx: int
+        position number
     settings: dict
         dictionary of settings
     store_2_disk: bool
@@ -30,21 +30,15 @@ def process_pos(pos, settings, store_2_disk = True, clean_disk = True):
         
     returns:
          pandas dataframe with colony properties             
-    '''
-    #get psotion number
-    file_name = pos.split('-images')[0]
-    pos_idx = int(file_name.split('_p')[-1])
-    
-    print(f"Segementing & processing position {pos_idx}")
-    
+    '''    
     exp_name = settings['exp_name']
     
     #construct file names
-    file_name_seg = f"{exp_name}_reg_p{pos_idx:03d}-images_Probabilities.h5"
+    file_name_seg = f"{exp_name}_reg_p{pos_idx:03d}_Probabilities.h5"
 
     #load segmented images
     seg_im_file = h5py.File(settings['path_seg_im']/file_name_seg, 'r') #open 
-    chunk_size = (1, 1,*seg_im_file['images'].shape[-2:])
+    chunk_size = (1, 1,*seg_im_file['exported_data'].shape[-2:])
     seg_prob = da.from_array(seg_im_file['exported_data'], chunks=chunk_size)
 
     #crop to max frame
@@ -112,10 +106,12 @@ def process_pos(pos, settings, store_2_disk = True, clean_disk = True):
     #combine dataframes
     df = pd.concat([df_SA1, df_SA2, df_PA]).reset_index(drop=True)
     
-    #add spatial properties
-    df = add_centrod_distance(df)
-    #if settings['calc_edge_dist']:
-    df = add_edge2edge_distance(df,PA_labels,SA1_labels,SA2_labels)
+    
+    if df_PA.size > 0:
+        #add spatial properties
+        df = add_centrod_distance(df)
+        #if settings['calc_edge_dist']:
+        df = add_edge2edge_distance(df,PA_labels,SA1_labels,SA2_labels, max_frame=max_frame_e2e)
     
     csv_dir_pos = settings['path_data_files'] / settings['exp_name']
     csv_name = csv_dir_pos / f"{exp_name}_pos{pos_idx:03d}.csv"
@@ -249,6 +245,10 @@ def track_extract_prop(label_im, prop_list, metadata=None):
                                        metadata = {'frame':t, **metadata}) 
                     for t, label in enumerate(label_im)])
     
+    #check if data frame is empty
+    if df.empty:
+        return df
+    
     df = track_colonies(df, direction='forward')
     
     return df
@@ -289,37 +289,38 @@ def track_colonies(df, direction='forward'):
 
         x1 = df[df['frame']==frm]['centroid-0'].values
         y1 = df[df['frame']==frm]['centroid-1'].values
-
-        if direction == 'forward':
-            #forward tracking
-            dx = np.atleast_2d(x0).T - np.atleast_2d(x1) #row is x0, col is x1
-            dy = np.atleast_2d(y0).T - np.atleast_2d(y1) #row is y0, col is y1
-        elif direction == 'backward':
-            #backward tracking
-            dx = np.atleast_2d(x1).T - np.atleast_2d(x0) #row is x1, col is x0
-            dy = np.atleast_2d(y1).T - np.atleast_2d(y0) #row is y1, col is y0
         
-        ds = np.sqrt(dx**2 + dy**2)
-
-        #get column index of minimum distance between each cell in frame 0 and frame 1
-        idx = np.argmin(ds, axis=1)
-
-        #forward tracking
-        if direction == 'forward':
-            #init new col_idx
-            col_idx_new = -1 * np.ones(np.sum(df['frame']==frm))
+        if x1.size>0:
+            if direction == 'forward':
+                #forward tracking
+                dx = np.atleast_2d(x0).T - np.atleast_2d(x1) #row is x0, col is x1
+                dy = np.atleast_2d(y0).T - np.atleast_2d(y1) #row is y0, col is y1
+            elif direction == 'backward':
+                #backward tracking
+                dx = np.atleast_2d(x1).T - np.atleast_2d(x0) #row is x1, col is x0
+                dy = np.atleast_2d(y1).T - np.atleast_2d(y0) #row is y1, col is y0
             
-            #make sure each colony in frame t is only matched to one colony in frame t-1
-            unique_idx = np.unique(idx)
-            for id_new in unique_idx:
-                if np.sum(idx==id_new) == 1: #unique match
-                    id_old = np.where(idx==id_new)[0][0]
-                    col_idx_new[id_new] = col_idx_prev[id_old]
-        elif direction == 'backward':
-            col_idx_new = col_idx_prev[idx]
-        
-        #assign new col_idx
-        df.loc[df['frame']==frm, 'colony_id'] = col_idx_new
+            ds = np.sqrt(dx**2 + dy**2)
+
+            #get column index of minimum distance between each cell in frame 0 and frame 1
+            idx = np.argmin(ds, axis=1)
+
+            #forward tracking
+            if direction == 'forward':
+                #init new col_idx
+                col_idx_new = -1 * np.ones(np.sum(df['frame']==frm))
+                
+                #make sure each colony in frame t is only matched to one colony in frame t-1
+                unique_idx = np.unique(idx)
+                for id_new in unique_idx:
+                    if np.sum(idx==id_new) == 1: #unique match
+                        id_old = np.where(idx==id_new)[0][0]
+                        col_idx_new[id_new] = col_idx_prev[id_old]
+            elif direction == 'backward':
+                col_idx_new = col_idx_prev[idx]
+            
+            #assign new col_idx
+            df.loc[df['frame']==frm, 'colony_id'] = col_idx_new
         
     return df
 
@@ -415,18 +416,20 @@ def add_centrod_distance(df):
     df['min_dist_PA_centroid'] = np.nan
 
     for frm in df['frame'].unique():
+        
 
         pos_SA1 = df[(df['frame']==frm) & (df['strain']=='SA1')][['centroid-0', 'centroid-1']].values
         pos_SA2 = df[(df['frame']==frm) & (df['strain']=='SA2')][['centroid-0', 'centroid-1']].values
         pos_PA = df[(df['frame']==frm) & (df['strain']=='PA')][['centroid-0', 'centroid-1']].values
 
-        df.loc[(df['frame']==frm) & (df['strain']=='SA1'), 'min_dist_PA_centroid'] = calc_min_dist(pos_SA1, pos_PA)
-        df.loc[(df['frame']==frm) & (df['strain']=='SA2'), 'min_dist_PA_centroid'] = calc_min_dist(pos_SA2, pos_PA)
-        
+        if pos_PA.size>0:
+            df.loc[(df['frame']==frm) & (df['strain']=='SA1'), 'min_dist_PA_centroid'] = calc_min_dist(pos_SA1, pos_PA)
+            df.loc[(df['frame']==frm) & (df['strain']=='SA2'), 'min_dist_PA_centroid'] = calc_min_dist(pos_SA2, pos_PA)
+            
     return df
 
 
-def add_edge2edge_distance(df,PA_labels,SA1_labels,SA2_labels):
+def add_edge2edge_distance(df,PA_labels,SA1_labels,SA2_labels, max_frame=None, ignore_edge=0):
     ''' add closest distance between edge of SA and PA colonies 
     
     Parameters
@@ -453,31 +456,48 @@ def add_edge2edge_distance(df,PA_labels,SA1_labels,SA2_labels):
     #get image size
     imH,imW = PA_labels.shape[-2:]
     
-    for frm in df['frame'].unique():
+    max_frame = max_frame if max_frame is not None else df['frame'].max()
+    
+    for frm in range(max_frame+1):
+        
+        PA_curim = PA_labels[frm,:].compute()
+        SA1_curim = SA1_labels[frm,:].compute()
+        SA2_curim = SA2_labels[frm,:].compute()
+        
+        
+        row_PA, col_PA = np.nonzero(PA_curim)
+        
+        if row_PA.size>0:
+            for i in df.index[(df['frame']==frm)]: #loop through colonies in frame
+                if df.loc[i, 'strain'] == 'PA': #skip Pseudomonas aeruginosa
+                    continue
+                if df.loc[i, 'colony_id'] == -1: #skip untracked colonies
+                    continue
+                
+                #select correct SA layer
+                SA_im = SA1_curim if df.loc[i, 'strain'] == 'SA1' else SA2_curim 
+                
+                x_c = df.loc[i,'centroid-1']
+                y_c = df.loc[i,'centroid-0']
+                
+                if (x_c > ignore_edge) & (x_c < imW-ignore_edge) & (y_c > ignore_edge) & (y_c < imH-ignore_edge):
+                
+                    #create crop box centered on colony with size 2 x distance to closest PA colony (we know that closest Pa colony is within this distance)
+                    xmin = max(0, int(x_c - df.loc[i, 'min_dist_PA_centroid']))
+                    xmax = min(imW, int(x_c + df.loc[i, 'min_dist_PA_centroid']))
+                    ymin = max(0, int(y_c - df.loc[i, 'min_dist_PA_centroid']))
+                    ymax = min(imH, int(y_c + df.loc[i, 'min_dist_PA_centroid']))
 
-        for i in df.index[(df['frame']==frm)]: #loop through colonies in frame
-            if df.loc[i, 'strain'] == 'PA': #skip Pseudomonas aeruginosa
-                continue
-            if df.loc[i, 'colony_id'] == -1: #skip untracked colonies
-                continue
-            
-            #select correct SA layer
-            SA_im = SA1_labels[frm,:] if df.loc[i, 'strain'] == 'SA1' else SA2_labels[frm,:] 
-            
-            #create crop box centered on colony with size 2 x distance to closest PA colony (we know that closest Pa colony is within this distance)
-            xmin = max(0, int(df.loc[i,'centroid-1'] - df.loc[i, 'min_dist_PA_centroid']))
-            xmax = min(imW, int(df.loc[i,'centroid-1'] + df.loc[i, 'min_dist_PA_centroid']))
-            ymin = max(0, int(df.loc[i,'centroid-0'] - df.loc[i, 'min_dist_PA_centroid']))
-            ymax = min(imH, int(df.loc[i,'centroid-0'] + df.loc[i, 'min_dist_PA_centroid']))
+                    #get pixels of target colony
+                    y_SA, x_SA = np.nonzero((SA_im == df.loc[i, 'label']))
 
-            #get pixels of target colony
-            x_SA, y_SA = np.nonzero((SA_im[ymin:ymax,xmin:xmax] == df.loc[i, 'label']).compute())
+                    #get pixels of PA colony
+                    in_window = (row_PA>=ymin) & (row_PA<=ymax) & (col_PA>=xmin) & (col_PA<=xmax)
+                    y_PA = row_PA[in_window]
+                    x_PA = col_PA[in_window]
 
-            #get pixels of PA colony
-            x_PA, y_PA = np.nonzero((PA_labels[frm,ymin:ymax,xmin:xmax]).compute())
-            
-            #calculate distance to closest PA colony
-            dist = calc_min_dist((x_SA, y_SA), (x_PA, y_PA))            
-            df.loc[i, 'min_dist_PA_edge2edge'] = dist.min()
+                    #calculate distance to closest PA colony
+                    dist = calc_min_dist((x_SA, y_SA), (x_PA, y_PA))            
+                    df.loc[i, 'min_dist_PA_edge2edge'] = dist.min()
         
     return df

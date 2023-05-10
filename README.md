@@ -6,6 +6,10 @@ Run the `6_plot_colony_growth` notebook
 
 ## Description full pipeline
 
+Create conda environment from environment file:
+
+`conda env create -f environment.yml`
+
 ### 0. Data preparation
 
 - `0_create_metadata` notebook stores metadata for each experiment in csv pandas data frame
@@ -19,8 +23,8 @@ Train Ilastik classifier and export probability maps
 
 ### 2. Post-process and track in Python
 
-- `3A_check_segmentation_streamlined` notebook check Ilastik segmentation and set post-processing settings, uses code in `process_colonies.py`
-- `3B_check_segmentation` notebook same as above but explaining processing steps  
+- `3A_check_segmentation_streamlined` notebook to check Ilastik segmentation and set post-processing settings, uses code in `process_colonies.py`
+- `3B_check_segmentation` notebook same as above but explaining processing step by step (for illustration purposes only)
 - `4_batch_process_segmentation` notebook apply postprocessing (check in 3A) to all data, uses code in `process_colonies.py`. Output stored in `all_data.csv`.
 
 ### 3. Analyze data
