@@ -95,13 +95,13 @@ def process_pos(pos_idx, settings, store_2_disk = True, clean_disk = True, max_f
 
     #track colonies and extract properties
     df_SA1 = track_extract_prop(SA1_labels, settings['prop_list'], 
-                                metadata = {'pos': pos_idx, 'strain':'SA1','condition':condition})
+                                metadata = {'pos': pos_idx, 'strain':'SA1','condition':condition, 'exp_name':exp_name})
     
     df_SA2 = track_extract_prop(SA2_labels, settings['prop_list'], 
-                                metadata = {'pos': pos_idx, 'strain':'SA2','condition':condition})
+                                metadata = {'pos': pos_idx, 'strain':'SA2','condition':condition, 'exp_name':exp_name})
     
     df_PA = track_extract_prop(PA_labels, settings['prop_list'], 
-                                metadata = {'pos': pos_idx, 'strain':'PA','condition':condition})
+                                metadata = {'pos': pos_idx, 'strain':'PA','condition':condition, 'exp_name':exp_name})
     
     #combine dataframes
     df = pd.concat([df_SA1, df_SA2, df_PA]).reset_index(drop=True)
@@ -456,7 +456,8 @@ def add_edge2edge_distance(df,PA_labels,SA1_labels,SA2_labels, max_frame=None, i
     #get image size
     imH,imW = PA_labels.shape[-2:]
     
-    max_frame = max_frame if max_frame is not None else df['frame'].max()
+    max_frame = min(max_frame,df['frame'].max()) if max_frame is not None else df['frame'].max()
+    
     
     for frm in range(max_frame+1):
         
